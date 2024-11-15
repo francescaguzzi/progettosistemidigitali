@@ -1,3 +1,4 @@
+from multiprocessing import Queue
 from scipy.spatial import distance as dist
 from imutils import face_utils
 from imutils.video import VideoStream
@@ -17,93 +18,102 @@ def eye_aspect_ratio(eye):
     ear = (A + B) / (2.0 * C)
     return ear
 
-# Initialize constants for EAR threshold and consecutive frames
-EYE_AR_THRESH = 0.2 
-EYE_AR_CONSEC_FRAMES = 3
-
-COUNTER = 0
-TOTAL = 0
-
-detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
-
-(lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
-(rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
-
-vs = VideoStream(src=0).start()
-time.sleep(1.0)
 
 
-while True:
+def facial_recognition(queue):
 
-    frame = vs.read()
-    frame = imutils.resize(frame, width=600)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Initialize constants for EAR threshold and consecutive frames
+    EYE_AR_THRESH = 0.2 
+    EYE_AR_CONSEC_FRAMES = 3
 
-    rects = detector(gray, 0)
+    COUNTER = 0
+    TOTAL = 0
 
-    ear = 0
-    orientation = " "
+    detector = dlib.get_frontal_face_detector()
+    predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
-    for rect in rects:
+    (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
+    (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
-        # determine the facial landmarks for the face region, then
-		# convert the facial landmark (x, y)-coordinates to a NumPy
-		# array
-        shape = predictor(gray, rect)
-        shape = face_utils.shape_to_np(shape)
+    vs = VideoStream(src=0).start()
+    time.sleep(1.0)
 
-        # extract the left and right eye coordinates, then use the
-		# coordinates to compute the eye aspect ratio for both eyes
-        leftEye = shape[lStart:lEnd]
-        rightEye = shape[rStart:rEnd]
 
-        # average the eye aspect ratio together for both eyes
-        leftEAR = eye_aspect_ratio(leftEye)
-        rightEAR = eye_aspect_ratio(rightEye)
-        ear = (leftEAR + rightEAR) / 2.0
+    while True:
 
-        # compute the convex hull for the left and right eye, then
-		# visualize each of the eyes
-        leftEyeHull = cv2.convexHull(leftEye)
-        rightEyeHull = cv2.convexHull(rightEye)
-        cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
-        cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
+        frame = vs.read()
+        frame = imutils.resize(frame, width=600)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # Check if the eyes are closed (blink detection)
-        if ear < EYE_AR_THRESH:
-            COUNTER += 1
-        else:
-            if COUNTER >= EYE_AR_CONSEC_FRAMES:
-                TOTAL += 1
-            COUNTER = 0
+        rects = detector(gray, 0)
 
-        leftEyeCenter = np.mean(leftEye, axis=0)
-        rightEyeCenter = np.mean(rightEye, axis=0)
-        nosePoint = shape[33]
+        ear = 0
+        orientation = " "
 
-        TOLERANCE = 10
+        blink_event = False
 
-        distLeft = np.linalg.norm(nosePoint - leftEyeCenter)
-        distRight = np.linalg.norm(nosePoint - rightEyeCenter)
+        for rect in rects:
 
-        if abs(distLeft - distRight) < TOLERANCE:
-            orientation = "CENTRO"
-        elif distLeft > distRight:
-            orientation = "DESTRA"
-        else:
-            orientation = "SINISTRA"
+            # determine the facial landmarks for the face region, then
+            # convert the facial landmark (x, y)-coordinates to a NumPy
+            # array
+            shape = predictor(gray, rect)
+            shape = face_utils.shape_to_np(shape)
 
-    # Display the blink count
-    cv2.putText(frame, f"Blinks: {TOTAL}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-    cv2.putText(frame, f"Orientamento: {orientation}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+            # extract the left and right eye coordinates, then use the
+            # coordinates to compute the eye aspect ratio for both eyes
+            leftEye = shape[lStart:lEnd]
+            rightEye = shape[rStart:rEnd]
 
-    cv2.imshow("Frame", frame)
-    key = cv2.waitKey(1) & 0xFF
+            # average the eye aspect ratio together for both eyes
+            leftEAR = eye_aspect_ratio(leftEye)
+            rightEAR = eye_aspect_ratio(rightEye)
+            ear = (leftEAR + rightEAR) / 2.0
 
-    if key == ord("q"):
-        break
+            # compute the convex hull for the left and right eye, then
+            # visualize each of the eyes
+            leftEyeHull = cv2.convexHull(leftEye)
+            rightEyeHull = cv2.convexHull(rightEye)
+            cv2.drawContours(frame, [leftEyeHull], -1, (0, 255, 0), 1)
+            cv2.drawContours(frame, [rightEyeHull], -1, (0, 255, 0), 1)
 
-cv2.destroyAllWindows()
-vs.stop()
+            # Check if the eyes are closed (blink detection)
+            if ear < EYE_AR_THRESH:
+                COUNTER += 1
+            else:
+                if COUNTER >= EYE_AR_CONSEC_FRAMES:
+                    blink_event = True
+                    TOTAL += 1
+                COUNTER = 0
+
+            leftEyeCenter = np.mean(leftEye, axis=0)
+            rightEyeCenter = np.mean(rightEye, axis=0)
+            nosePoint = shape[33]
+
+            TOLERANCE = 10
+
+            distLeft = np.linalg.norm(nosePoint - leftEyeCenter)
+            distRight = np.linalg.norm(nosePoint - rightEyeCenter)
+
+            if abs(distLeft - distRight) < TOLERANCE:
+                orientation = "CENTRO"
+            elif distLeft > distRight:
+                orientation = "DESTRA"
+            else:
+                orientation = "SINISTRA"
+
+        queue.put({"orientation": orientation, "blink": blink_event})
+        
+        # Display the blink count
+        cv2.putText(frame, f"Blinks: {TOTAL}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(frame, f"Orientamento: {orientation}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+
+        cv2.imshow("Frame", frame)
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord("q"):
+            break
+
+    cv2.destroyAllWindows()
+    vs.stop()
