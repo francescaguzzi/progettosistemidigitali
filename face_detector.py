@@ -1,4 +1,4 @@
-from multiprocessing import Queue
+from multiprocessing import Value, Lock
 from scipy.spatial import distance as dist
 from imutils import face_utils
 from imutils.video import VideoStream
@@ -20,7 +20,7 @@ def eye_aspect_ratio(eye):
 
 
 
-def facial_recognition(queue):
+def facial_recognition(orientation, blink, lock):
 
     # Initialize constants for EAR threshold and consecutive frames
     EYE_AR_THRESH = 0.2 
@@ -42,13 +42,15 @@ def facial_recognition(queue):
     while True:
 
         frame = vs.read()
+        frame = cv2.flip(frame, 1)  # mirrors image
+
         frame = imutils.resize(frame, width=600)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         rects = detector(gray, 0)
 
         ear = 0
-        orientation = " "
+        orientation_value = 0 # 0 centro, 1 destra, 2 sinistra
 
         blink_event = False
 
@@ -96,18 +98,22 @@ def facial_recognition(queue):
             distRight = np.linalg.norm(nosePoint - rightEyeCenter)
 
             if abs(distLeft - distRight) < TOLERANCE:
-                orientation = "CENTRO"
-            elif distLeft > distRight:
-                orientation = "DESTRA"
+                orientation_value = 0 # CENTRO
+            elif distLeft < distRight:
+                orientation_value = 1 # DESTRA
             else:
-                orientation = "SINISTRA"
+                orientation_value = 2 # SINISTRA
 
-        queue.put({"orientation": orientation, "blink": blink_event})
+        with lock:
+            orientation.value = orientation_value
+            blink.value = blink_event
         
         # Display the blink count
         cv2.putText(frame, f"Blinks: {TOTAL}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        cv2.putText(frame, f"Orientamento: {orientation}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        cv2.putText(frame, f"Orientamento: {orientation_value}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+
+        
 
         cv2.imshow("Frame", frame)
         key = cv2.waitKey(1) & 0xFF
