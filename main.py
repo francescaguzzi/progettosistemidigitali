@@ -3,6 +3,7 @@ import pygame
 # import sys
 from multiprocessing import Process, Value, Lock
 import time
+import random 
 
 # sys.path.append("game/")
 from face_detector import facial_recognition
@@ -23,6 +24,17 @@ def load_frames(folder_path, screen_height):
             frames.append(frame)
     return frames
 
+def load_random_frames(screen_height):
+
+    # prendo tutte le sottocartelle della directory
+    base_path = "frames"
+    subfolders = [f.path for f in os.scandir(base_path) if f.is_dir()]
+
+    random_folder = random.choice(subfolders)
+
+    print(f"Carico i frame dalla cartella: {random_folder}")
+    return load_frames(random_folder, screen_height)
+
 # Script Pygame
 def game(orientation, blink, lock):
 
@@ -34,7 +46,7 @@ def game(orientation, blink, lock):
 
     # Stato iniziale
     light_off = False  
-    frames = load_frames("frames", SCREEN_HEIGHT)
+    frames = load_frames("frames/default", SCREEN_HEIGHT)
     current_frame = 0
     frame_delay = 10
     frame_count = 0
@@ -72,6 +84,10 @@ def game(orientation, blink, lock):
         # Spegne/accende la luce quando sbatte le palpebre
         if blink_value:
             light_off = not light_off
+
+            if not light_off:
+                frames = load_random_frames(SCREEN_HEIGHT)
+                current_frame = 0
 
         if light_off:
             screen.fill((0,0,0)) 
