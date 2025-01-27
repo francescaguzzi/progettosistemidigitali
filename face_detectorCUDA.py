@@ -78,7 +78,7 @@ def histogram_equalization_cuda(input_image):
 
     # Calcolo della cdf
 
-    nrThreads = 512
+    nrThreads = 512 # ogni SN può contenere 512x3 e ogni blocco 1024 -> occupancy al massimo
     blockSplit = (width * height) // 512
 
     # calculate_cdfs = mod_cdf.get_function("calculate_cdfs")

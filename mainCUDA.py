@@ -7,7 +7,7 @@ import psutil
 import random 
 
 # sys.path.append("game/")
-from face_detector import facial_recognition
+from face_detectorCUDA import facial_recognition
 
 # ---------------------------- #
 

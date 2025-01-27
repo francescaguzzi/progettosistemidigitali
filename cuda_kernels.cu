@@ -15,7 +15,7 @@ __global__ void calculate_histograms(unsigned char *image, unsigned int *histogr
     //ogni blocco corrisponde ad un pixel, un thread all'interno del blocco per un pixel della finestra
                                
     //indice del blocco
-    unsigned int bid = blockIdx.y * gridDim.x + blockIdx.x ;
+    unsigned int bid = blockIdx.y * gridDim.x + blockIdx.x;
                    
     //indice all'interno della finestra
     //unsigned int bid = threadIdx.y * blockDim.x + threadIdx.x ;
@@ -28,7 +28,7 @@ __global__ void calculate_histograms(unsigned char *image, unsigned int *histogr
         
     if ( idx < w*h ){
         //viene aggiornato il counter per il livello di luminosità di image[idx] della finestra di indice bid
-        atomicAdd( &(histograms[(bid*256)+image[idx]]) , 1 ) ;
+        atomicAdd( &(histograms[(bid*256)+image[idx]]) , 1 );
     }
 }
 
@@ -41,11 +41,11 @@ __global__ void calculate_cdfs(unsigned int *histograms, int *cdfs, unsigned int
     unsigned idx = threadIdx.x + blockIdx.x*blockDim.x;                   
 
     //clipping degli istogrammi
-    int excess = 0 ; 
+    int excess = 0; 
      
     if ( clipLimit > 0 ) {
             for ( unsigned int i = 0 ; i < 256 ; i++ ) {
-            unsigned int excess = histograms[(idx*256)+i] - clipLimit ;
+            unsigned int excess = histograms[(idx*256)+i] - clipLimit;
             if (excess > 0) { excess+=excess; }
         }    
 
