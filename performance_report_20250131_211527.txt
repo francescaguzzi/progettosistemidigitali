@@ -1,0 +1,6 @@
+Performance Report
+==============================
+Tempo totale di esecuzione: 22.03 secondi
+Media degli FPS: 2.48
+Media consumo GPU: 27.12%
+Media memoria utilizzata: 3648.96 MB

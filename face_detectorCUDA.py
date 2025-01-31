@@ -14,18 +14,121 @@ from pycuda.compiler import SourceModule
 
 # ------------------------------------ #
 
-with open("cuda_kernels.ptx", "r") as f:
-    ptx_code = f.read()
+# KERNEL CUDA #
+
+# kernel calcolo degli istogrammi
+
+mod_hi = SourceModule("""
+                   
+__global__ void calculate_histograms(unsigned char *image, unsigned int *histograms, unsigned int w, unsigned int h) {   
+
+                   
+    //ogni blocco corrisponde ad un pixel, un thread all'interno del blocco per un pixel della finestra
+                               
+    //indice del blocco
+    unsigned int bid = blockIdx.y * gridDim.x + blockIdx.x ;
+                   
+    //indice all'interno della finestra
+    //unsigned int bid = threadIdx.y * blockDim.x + threadIdx.x ;
+                   
+    //indice globale
+    // unsigned int tid = bid * (blockDim.x * blockDim.y) + bid ;
+                   
+    //indice di scorrimento dell'immagine
+    unsigned int idx = bid + threadIdx.x + threadIdx.y * gridDim.x;
+        
+    if ( idx < w*h ){
+        //viene aggiornato il counter per il livello di luminosità di image[idx] della finestra di indice bid
+        atomicAdd( &(histograms[(bid*256)+image[idx]]) , 1 ) ;
+    }
+}
 
 
-mod = cuda.module_from_buffer(ptx_code)
+""")
 
-calculate_histogram = mod.get_function("calculate_histogram")
-calculate_cdfs = mod.get_function("calculate_cdfs")
-apply_cdfs = mod.get_function("apply_cdfs")
+# kernel clipping e calcolo delle cdf 
 
+mod_cdf = SourceModule("""
+
+__global__ void calculate_cdfs(unsigned int *histograms, int *cdfs, unsigned int clipLimit) {
+
+    //un thread per finestra               
+    unsigned idx = threadIdx.x + blockIdx.x*blockDim.x;                   
+
+    //clipping degli istogrammi
+    int excess = 0 ; 
+     
+    if ( clipLimit > 0 ) {
+            for ( unsigned int i = 0 ; i < 256 ; i++ ) {
+            unsigned int excess = histograms[(idx*256)+i] - clipLimit ;
+            if (excess > 0) { excess+=excess; }
+        }    
+
+        unsigned int binIncr = (int)(excess / 256) ;
+        unsigned int upper = clipLimit - binIncr ;
+                       
+        //distribuzione degli eccessi
+        for ( unsigned int i = 0 ; i < 256 ; i++ ) {
+            if (histograms[(idx*256)+i] > clipLimit) { 
+                histograms[(idx*256)+i] = clipLimit; 
+            } else {
+                excess -= binIncr ;
+                histograms[(idx*256)+i] += binIncr ;
+            }
+        }  
+
+        if ( excess > 0 ) {
+            //ridistribuisco l'eccesso
+            unsigned int stepSz = 1 + (int)(excess / 256) ;
+            for ( unsigned int i = 0 ; i < 256 && excess > 0; i++ ) {
+                excess -= stepSz ; 
+                histograms[(idx*256)+i] += stepSz;
+            }                   
+        }
+    }   
+                       
+    //calcolo della cdf
+    cdfs[idx*256] = histograms[idx*256] ;            
+    
+    for ( unsigned int i = 1 ; i < 256 ; i++ ) {
+        cdfs[(idx*256)+i] = histograms[(idx*256)+ i ] + cdfs[(idx*256)+ i - 1] ;
+    }
+}
+        
+""")
+
+# kernel applicazione cdf
+
+mod_apply = SourceModule("""
+                   
+__global__ void apply_cdfs(unsigned char *image, unsigned char *outputImage, int *cdfs, unsigned int w, unsigned int h) {   
+
+                   
+    //ogni blocco corrisponde ad una finestra, un thread all'interno del blocco per un pixel della finestra
+                               
+    //indice del blocco
+    unsigned int bid = blockIdx.y * gridDim.x + blockIdx.x ;
+                   
+    //indice all'interno del blocco
+    unsigned int lid = threadIdx.y * blockDim.x + threadIdx.x ;
+                   
+    //indice globale
+    // unsigned int tid = bid * (blockDim.x * blockDim.y) + bid ;
+                   
+    //indice di scorrimento dell'immagine
+    unsigned int idx = blockIdx.y * ((blockDim.y * blockDim.x) * gridDim.x ) + threadIdx.y * blockDim.x * gridDim.x + blockIdx.x * blockDim.x + threadIdx.x ;
+                                         
+    
+    if ( idx < w*h ){
+        int pixelValue = image[idx];
+        int equalizedPixel = (cdfs[(idx*256)+pixelValue] - cdfs[idx*256]) * 255 / ((blockDim.x * blockDim.y) - cdfs[idx*256]);
+        outputImage[idx] = static_cast<unsigned char>(equalizedPixel);
+    }
+}
+""")
 
 # ------------------------------------ #
+
 
 def histogram_equalization_cuda(input_image):
 
@@ -63,7 +166,7 @@ def histogram_equalization_cuda(input_image):
 
     # lancio del kernel per calcolare gli istogrammi
     starttime = time.time()
-    # calculate_histogram = mod_hi.get_function("calculate_histograms")
+    calculate_histogram = mod_hi.get_function("calculate_histograms")
     calculate_histogram(d_image, d_histograms, np.int32(width), np.int32(height), block=(blockDimX, blockDimY, 1), grid=(width, height))
     endtime = time.time()
     elapsed = endtime - starttime
@@ -81,7 +184,7 @@ def histogram_equalization_cuda(input_image):
     nrThreads = 512 # ogni SN può contenere 512x3 e ogni blocco 1024 -> occupancy al massimo
     blockSplit = (width * height) // 512
 
-    # calculate_cdfs = mod_cdf.get_function("calculate_cdfs")
+    calculate_cdfs = mod_cdf.get_function("calculate_cdfs")
     starttime1 = time.time()
     calculate_cdfs(d_histograms, d_cdfs, np.int32(clipLimit), block=(nrThreads, 1, 1), grid=(blockSplit, 1))
     endtime1 = time.time()
@@ -97,7 +200,7 @@ def histogram_equalization_cuda(input_image):
 
     # Kernel per applicare l'equalizzazione dell'istogramma
     starttime = time.time()
-    # apply_cdfs = mod_apply.get_function("apply_cdfs")
+    apply_cdfs = mod_apply.get_function("apply_cdfs")
     apply_cdfs(d_image, d_output_image, d_cdfs, np.int32(width), np.int32(height), block=(blockDimX, blockDimY, 1), grid=(width//blockDimX, height//blockDimY))
     endtime = time.time()
     elapsed = endtime - starttime
@@ -112,12 +215,11 @@ def histogram_equalization_cuda(input_image):
     d_output_image.free()
     d_histograms.free()
     d_cdfs.free()
+
     #necessario???? 
     return output_image
 
 # ------------------------------------ #
-
-
 
 def eye_aspect_ratio(eye):
 
@@ -128,7 +230,7 @@ def eye_aspect_ratio(eye):
     ear = (A + B) / (2.0 * C)
     return ear
 
-
+# ------------------------------------ #
 
 def facial_recognition(orientation, blink, lock):
 
