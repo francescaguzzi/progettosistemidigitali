@@ -105,14 +105,14 @@ def game(orientation, blink, lock):
     min_camera_x = 0
     max_camera_x = frames[0].get_width() - SCREEN_WIDTH
 
-    overlay_image = pygame.image.load("images/overlay.png")
-    overlay_original_width, overlay_original_height = overlay_image.get_size()
-    overlay_scale_ratio = SCREEN_HEIGHT / overlay_original_height
-    overlay_scaled_width = int(overlay_original_width * overlay_scale_ratio)
-    overlay_scaled_height = SCREEN_HEIGHT
-    overlay_image = pygame.transform.scale(overlay_image, (overlay_scaled_width, overlay_scaled_height))
-    overlay_position = (SCREEN_WIDTH // 2 - overlay_image.get_width() // 2, 
-                        SCREEN_HEIGHT // 2 - overlay_image.get_height() // 2)
+    # overlay_image = pygame.image.load("images/overlay.png")
+    # overlay_original_width, overlay_original_height = overlay_image.get_size()
+    # overlay_scale_ratio = SCREEN_HEIGHT / overlay_original_height
+    # overlay_scaled_width = int(overlay_original_width * overlay_scale_ratio)
+    # overlay_scaled_height = SCREEN_HEIGHT
+    # overlay_image = pygame.transform.scale(overlay_image, (overlay_scaled_width, overlay_scaled_height))
+    # overlay_position = (SCREEN_WIDTH // 2 - overlay_image.get_width() // 2, 
+    #                    SCREEN_HEIGHT // 2 - overlay_image.get_height() // 2)
 
     while running:
 
@@ -161,7 +161,7 @@ def game(orientation, blink, lock):
 
             # Renderizza il frame
             screen.blit(frames[current_frame], (-camera_x, 0))
-            screen.blit(overlay_image, overlay_position)
+            # screen.blit(overlay_image, overlay_position)
 
         # Riempie lo schermo con colore diverso a seconda della luce
         pygame.display.flip()

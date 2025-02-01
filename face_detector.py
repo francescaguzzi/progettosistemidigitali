@@ -132,7 +132,7 @@ def facial_recognition(orientation, blink, lock):
         for rect in rects:
 
             # estrazione dei facial landmarks 
-            shape = predictor(enhanced_gray, rect)
+            shape = predictor(gray, rect)
             shape = face_utils.shape_to_np(shape)
 
             # estrazione delle coordinate degli occhi e calcolo EAR
