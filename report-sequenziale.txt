@@ -7,3 +7,8 @@ clahe_pixelwise eseguita in 46.715983 secondi
 clahe eseguita in 63.030410 secondi
 clahe eseguita in 67.493823 secondi
 clahe eseguita in 70.471262 secondi
+
+---------------------------------------
+
+8x8 intorno
+

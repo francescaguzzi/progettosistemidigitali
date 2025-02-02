@@ -11,23 +11,14 @@ import cv2
 # ------------------------------------------ #
 
 def log_performance(func, report, *args, **kwargs):
-    """
-    Esegue la funzione 'func' con gli argomenti forniti, misura il tempo di esecuzione e scrive (in append)
-    i risultati nel file 'performance_report.txt'.
-
-    Parametri:
-      - func: funzione da eseguire e misurare.
-      - *args, **kwargs: argomenti posizionali e keyword da passare alla funzione.
-    """
+    
     start_time = time.time()
     result = func(*args, **kwargs)
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    # Crea la stringa di log
     log_line = f"{func.__name__} eseguita in {elapsed_time:.6f} secondi\n"
-    
-    # Scrive (in append) il log sul file performance_report.txt
+  
     with open(report, "a") as f:
         f.write(log_line)
     
@@ -36,17 +27,15 @@ def log_performance(func, report, *args, **kwargs):
 # ------------------------------------------ #
 
 def apply_clahe_opencv(image, clip_limit=2.0, tile_grid_size=(32, 32)):
-    
-    # Crea l'oggetto CLAHE con i parametri specificati
+
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
     
-    # Applica CLAHE all'immagine e restituisce il risultato
     output_image = clahe.apply(image)
     return output_image
 
 # ------------------------------------------ #
 
-def clahe(image, clip_limit=20, window_size=(32, 32)):
+def CLAHE(image, clip_limit=20, window_size=(32, 32)):
     """
     Applica il CLAHE (Contrast Limited Adaptive Histogram Equalization) calcolando,
     per ogni pixel, l'istogramma locale basato su un intorno di dimensione window_size (default 32x32).
@@ -112,21 +101,24 @@ def clahe(image, clip_limit=20, window_size=(32, 32)):
             # calcola la Cumulative Distribution Function (CDF)
             cdf = np.zeros(256, dtype=np.uint32)
             cdf[0] = hist[0]
-            for i in range(1, 256):
-                cdf[i] = cdf[i - 1] + hist[i]
+            for k in range(1, 256):
+                cdf[k] = cdf[k - 1] + hist[k]
             
             # normalizza la CDF per mappare i valori in [0,255]
             cdf_min = cdf.min()
             cdf_max = cdf.max()
             if cdf_max != cdf_min:
-                cdf_normalized = ((cdf - cdf_min) * 255) / (cdf_max - cdf_min)
+                cdf_normalized = np.empty(256, dtype=np.uint8)
+                for k in range(1, 256):
+                    cdf_normalized[k] = np.clip(round((cdf[k] - cdf_min) * 255 / (cdf_max - cdf_min)), 0, 255)
+                #cdf_normalized = ((cdf - cdf_min) * 255) / (cdf_max - cdf_min)
             else:
                 cdf_normalized = np.zeros(256, dtype=np.uint8)
 
             # mappa il pixel corrente usando il valore corrispondente nella Look-Up Table
             pixel_val = image[i, j]
-            new_val = np.clip(round(cdf_normalized[pixel_val]), 0, 255)
-            output_image[i, j] = new_val
+            # new_val = np.clip(round(cdf_normalized[pixel_val]), 0, 255)
+            output_image[i, j] = cdf_normalized[pixel_val]
 
     return output_image
 
