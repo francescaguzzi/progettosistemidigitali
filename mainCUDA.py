@@ -112,7 +112,7 @@ def game(orientation, blink, lock):
     # overlay_scaled_height = SCREEN_HEIGHT
     # overlay_image = pygame.transform.scale(overlay_image, (overlay_scaled_width, overlay_scaled_height))
     # overlay_position = (SCREEN_WIDTH // 2 - overlay_image.get_width() // 2, 
-                        SCREEN_HEIGHT // 2 - overlay_image.get_height() // 2)
+    #                    SCREEN_HEIGHT // 2 - overlay_image.get_height() // 2)
 
     while running:
 

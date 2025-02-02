@@ -185,18 +185,12 @@ if __name__ == "__main__":
         # variabile per il tempo di avvio
         start_time = Value('d', time.time())
 
-        # dati condivisi per le performance
-        manager = Manager()
-        shared_data = manager.dict()
-
         # avvio dei processi
         recognition_process = Process(target=facial_recognition, args=(orientation, blink, lock))
         game_process = Process(target=game, args=(orientation, blink, lock))
-        monitor_process = Process(target=monitor_performance, args=(start_time, game_process, recognition_process, stop_flag, shared_data))
         
         recognition_process.start()
         game_process.start()
-        monitor_process.start()
         
         # recognition_process.join()
         # game_process.join()
@@ -214,11 +208,6 @@ if __name__ == "__main__":
         stop_flag.value = True
         recognition_process.terminate()
         game_process.terminate()
-        monitor_process.join()
-
-        # genera il report
-        generate_performance_report(shared_data)
-        print("Report delle prestazioni generato")
 
     except KeyboardInterrupt:
 
@@ -227,6 +216,4 @@ if __name__ == "__main__":
         stop_flag.value = True
         recognition_process.terminate()
         game_process.terminate()
-        monitor_process.join()
-        generate_performance_report(shared_data)
-        print("Report delle prestazioni generato. Uscita.")
+    

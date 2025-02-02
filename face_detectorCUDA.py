@@ -9,7 +9,7 @@ import dlib
 import cv2
 
 import pycuda.driver as cuda 
-import pycuda.autoninit
+import pycuda.autoinit
 from pycuda.compiler import SourceModule
 
 # ------------------------------------ #

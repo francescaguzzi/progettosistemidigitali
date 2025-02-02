@@ -8,78 +8,122 @@ import time
 import dlib
 import cv2
 
-# ------------------------------------ #
+# ------------------------------------------ #
 
-def calculate_histograms(image, histograms, w, h):
+def log_performance(func, report, *args, **kwargs):
+    """
+    Esegue la funzione 'func' con gli argomenti forniti, misura il tempo di esecuzione e scrive (in append)
+    i risultati nel file 'performance_report.txt'.
 
-    # nel caso sequenziale, consideriamo l'intera immagine
-    for y in range(h):
-        for x in range(w):
-            idx = y * w + x  # indice del pixel nell'immagine
-            pixel_value = image[idx]
-            histograms[pixel_value] += 1 
+    Parametri:
+      - func: funzione da eseguire e misurare.
+      - *args, **kwargs: argomenti posizionali e keyword da passare alla funzione.
 
+    Ritorna:
+      - Il risultato della funzione 'func'.
+    """
+    start_time = time.time()
+    result = func(*args, **kwargs)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
 
-# ------------------------------------ #
-
-def calculate_cdfs(histograms, cdfs, clipLimit):
-
-    # clipping dell'istogramma
-    excess = 0
-    if clipLimit > 0:
-        for i in range(256):
-            excess += max(histograms[i] - clipLimit, 0)
-            histograms[i] = min(histograms[i], clipLimit)
-        
-        # ridistribuzione dell'eccesso
-        binIncr = excess // 256
-        
-        for i in range(256):
-            histograms[i] += binIncr
-        
-        if excess > 0:
-            stepSz = 1 + (excess // 256)
-            for i in range(256):
-                if excess <= 0:
-                    break
-                excess -= stepSz
-                histograms[i] += stepSz
+    # Crea la stringa di log
+    log_line = f"{func.__name__} eseguita in {elapsed_time:.6f} secondi\n"
     
-    # calcolo delle CDF
-    cdfs[0] = histograms[0]
-    for i in range(1, 256):
-        cdfs[i] = histograms[i] + cdfs[i - 1]
+    # Scrive (in append) il log sul file performance_report.txt
+    with open(report, "a") as f:
+        f.write(log_line)
+    
+    return result
 
-# ------------------------------------ #
+# ------------------------------------------ #
 
-def apply_cdfs(image, outputImage, cdfs, w, h):
+def clahe_sequenziale(image, clip_limit=20, tile_size=(32, 32)):
+    """
+    Applica il metodo CLAHE (Contrast Limited Adaptive Histogram Equalization) in modo sequenziale
+    sull'immagine in scala di grigi, suddividendola in tile (blocchi) di dimensioni specificate (default 32x32).
 
-    for y in range(h):
-        for x in range(w):
-            idx = y * w + x
-            pixelValue = image[idx]
-            equalizedPixel = (cdfs[pixelValue] - cdfs[0]) * 255 // (w * h - cdfs[0])
-            outputImage[idx] = np.uint8(equalizedPixel)
+    Per ogni tile:
+      - Viene calcolato l'istogramma dei pixel.
+      - Si applica il clipping dell'istogramma: per ciascun livello di intensità, se il conteggio supera
+        il valore clip_limit, l'eccesso viene conteggiato e successivamente ridistribuito uniformemente.
+      - Si calcola la Cumulative Distribution Function (CDF) a partire dall'istogramma modificato.
+      - La CDF viene normalizzata per ottenere una mappatura dei valori originali (0-255) a valori equalizzati.
+      - Infine, la trasformazione viene applicata al tile e il risultato viene copiato nell'immagine di output.
 
-# ------------------------------------ #
+    Parametri:
+      - image: numpy.ndarray in scala di grigi (dtype=np.uint8) contenente l'immagine di input.
+      - clip_limit: valore intero che definisce il limite massimo per ciascun bin dell'istogramma prima di effettuare il clipping.
+      - tile_size: tupla (tile_height, tile_width) che definisce la dimensione di ciascun blocco (tile).
 
-def histogram_equalization_sequential(input_image):
+    Ritorna:
+      - output_image: numpy.ndarray contenente l'immagine equalizzata.
+    """
+    
+    height, width = image.shape
+    tile_height, tile_width = tile_size
+    
+    num_tiles_y = height // tile_height
+    num_tiles_x = width // tile_width
+    
+    output_image = np.zeros_like(image)
+    
 
-    height, width = input_image.shape
-
-    histograms = np.zeros(256, dtype=np.int32)
-    cdfs = np.zeros(256, dtype=np.int32)
-
-    calculate_histograms(input_image.flatten(), histograms, width, height)
-
-    clipLimit = 40
-    calculate_cdfs(histograms, cdfs, clipLimit)
-
-    output_image = np.empty_like(input_image)
-    apply_cdfs(input_image.flatten(), output_image.flatten(), cdfs, width, height)
+    for ty in range(num_tiles_y):
+        for tx in range(num_tiles_x):
+            # estrazione delle coordinate
+            y_start = ty * tile_height
+            y_end = y_start + tile_height
+            x_start = tx * tile_width
+            x_end = x_start + tile_width
+            
+            tile = image[y_start:y_end, x_start:x_end]
+            
+            # calcolo degli istogrammi
+            hist = np.zeros(256, dtype=np.uint32)
+            for y in range(tile_height):
+                for x in range(tile_width):
+                    pixel_value = tile[y, x]
+                    hist[pixel_value] += 1
+            
+            # clipping 
+            if clip_limit > 0:
+                excess = 0
+                for i in range(256):
+                    if hist[i] > clip_limit:
+                        excess += hist[i] - clip_limit
+                        hist[i] = clip_limit
+                
+                # ridistribuzione degli eccessi
+                bin_incr = excess // 256
+                for i in range(256):
+                    hist[i] += bin_incr
+                remaining = excess % 256
+                for i in range(remaining):
+                    hist[i] += 1
+            
+            # calcolo della CDF
+            cdf = np.zeros(256, dtype=np.uint32)
+            cdf[0] = hist[0]
+            for i in range(1, 256):
+                cdf[i] = cdf[i - 1] + hist[i]
+            
+            # normalizzazione della CDF
+            cdf_min = cdf.min()
+            cdf_max = cdf.max()
+            if cdf_max != cdf_min:
+                cdf_normalized = ((cdf - cdf_min) * 255) / (cdf_max - cdf_min)
+            else:
+                cdf_normalized = np.zeros(256, dtype=np.uint8)
+            
+            # applica la trasformazione al tile
+            for y in range(tile_height):
+                for x in range(tile_width):
+                    pixel_value = tile[y, x]
+                    equalized_pixel = cdf_normalized[pixel_value]
+                    output_image[y_start + y, x_start + x] = equalized_pixel
 
     return output_image
-
 
 # ------------------------------------ #
 
@@ -120,7 +164,8 @@ def facial_recognition(orientation, blink, lock):
         frame = imutils.resize(frame, width=600)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        enhanced_gray = histogram_equalization_sequential(gray)
+        # enhanced_gray = histogram_equalization_sequential(gray)
+        enhanced_gray = log_performance(clahe_sequenziale, "report-sequenziale.txt", gray)
 
         rects = detector(enhanced_gray, 0)
 
