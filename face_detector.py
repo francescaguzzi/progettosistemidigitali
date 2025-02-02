@@ -18,9 +18,6 @@ def log_performance(func, report, *args, **kwargs):
     Parametri:
       - func: funzione da eseguire e misurare.
       - *args, **kwargs: argomenti posizionali e keyword da passare alla funzione.
-
-    Ritorna:
-      - Il risultato della funzione 'func'.
     """
     start_time = time.time()
     result = func(*args, **kwargs)
@@ -38,94 +35,102 @@ def log_performance(func, report, *args, **kwargs):
 
 # ------------------------------------------ #
 
-def clahe_sequenziale(image, clip_limit=20, tile_size=(32, 32)):
-    """
-    Applica il metodo CLAHE (Contrast Limited Adaptive Histogram Equalization) in modo sequenziale
-    sull'immagine in scala di grigi, suddividendola in tile (blocchi) di dimensioni specificate (default 32x32).
+def apply_clahe_opencv(image, clip_limit=2.0, tile_grid_size=(32, 32)):
+    
+    # Crea l'oggetto CLAHE con i parametri specificati
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
+    
+    # Applica CLAHE all'immagine e restituisce il risultato
+    output_image = clahe.apply(image)
+    return output_image
 
-    Per ogni tile:
-      - Viene calcolato l'istogramma dei pixel.
-      - Si applica il clipping dell'istogramma: per ciascun livello di intensità, se il conteggio supera
-        il valore clip_limit, l'eccesso viene conteggiato e successivamente ridistribuito uniformemente.
-      - Si calcola la Cumulative Distribution Function (CDF) a partire dall'istogramma modificato.
-      - La CDF viene normalizzata per ottenere una mappatura dei valori originali (0-255) a valori equalizzati.
-      - Infine, la trasformazione viene applicata al tile e il risultato viene copiato nell'immagine di output.
+# ------------------------------------------ #
+
+def clahe(image, clip_limit=20, window_size=(32, 32)):
+    """
+    Applica il CLAHE (Contrast Limited Adaptive Histogram Equalization) calcolando,
+    per ogni pixel, l'istogramma locale basato su un intorno di dimensione window_size (default 32x32).
+
+    L'algoritmo procede come segue per ciascun pixel:
+      1. Viene definito un intorno di dimensione window_size centrato sul pixel. Per gestire i bordi,
+         l'immagine viene opportunamente "padded" replicando i bordi.
+      2. Si calcola l'istogramma dell'intorno.
+      3. Si applica il clipping: per ogni bin, se il conteggio supera clip_limit, l'eccesso viene conteggiato
+         e il bin viene limitato a clip_limit.
+      4. L'eccesso totale viene ridistribuito uniformemente (con eventuale gestione del resto) su tutti i bin.
+      5. Si calcola la Cumulative Distribution Function (CDF) a partire dall'istogramma modificato.
+      6. La CDF viene normalizzata per mappare i valori nel range [0, 255].
+      7. Il pixel originale viene trasformato in base al valore della LUT derivante dalla CDF locale.
 
     Parametri:
       - image: numpy.ndarray in scala di grigi (dtype=np.uint8) contenente l'immagine di input.
-      - clip_limit: valore intero che definisce il limite massimo per ciascun bin dell'istogramma prima di effettuare il clipping.
-      - tile_size: tupla (tile_height, tile_width) che definisce la dimensione di ciascun blocco (tile).
+      - clip_limit: valore intero che definisce il limite massimo per ciascun bin dell'istogramma.
+      - window_size: tupla (h, w) che definisce la dimensione dell'intorno locale (default (32, 32)).
 
     Ritorna:
       - output_image: numpy.ndarray contenente l'immagine equalizzata.
+    
+    NOTA: Questo approccio è computazionalmente oneroso perché per ogni pixel viene
+          ricalcolato l'istogramma della sua finestra locale.
     """
-    
-    height, width = image.shape
-    tile_height, tile_width = tile_size
-    
-    num_tiles_y = height // tile_height
-    num_tiles_x = width // tile_width
-    
-    output_image = np.zeros_like(image)
-    
 
-    for ty in range(num_tiles_y):
-        for tx in range(num_tiles_x):
-            # estrazione delle coordinate
-            y_start = ty * tile_height
-            y_end = y_start + tile_height
-            x_start = tx * tile_width
-            x_end = x_start + tile_width
-            
-            tile = image[y_start:y_end, x_start:x_end]
-            
-            # calcolo degli istogrammi
-            hist = np.zeros(256, dtype=np.uint32)
-            for y in range(tile_height):
-                for x in range(tile_width):
-                    pixel_value = tile[y, x]
-                    hist[pixel_value] += 1
-            
-            # clipping 
+    win_h, win_w = window_size
+    pad_h = win_h // 2
+    pad_w = win_w // 2
+
+    # esegue il padding sull'immagine per gestire i bordi (replicando il valore dei bordi)
+    padded_image = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), mode='edge')
+    height, width = image.shape
+    output_image = np.zeros_like(image)
+
+    # per ogni pixel dell'immagine 
+    for i in range(height):
+        for j in range(width):
+
+            # estrae l'intorno locale 32x32 corrispondente
+            local_window = padded_image[i:i + win_h, j:j + win_w]
+
+            # calcola l'istogramma locale (256 bin per valori 0-255)
+            hist, _ = np.histogram(local_window, bins=256, range=(0, 256))
+            hist = hist.astype(np.uint32)
+
+            # clipping dell'istogramma: se un bin supera clip_limit, si accumula l'eccesso
             if clip_limit > 0:
                 excess = 0
-                for i in range(256):
-                    if hist[i] > clip_limit:
-                        excess += hist[i] - clip_limit
-                        hist[i] = clip_limit
-                
-                # ridistribuzione degli eccessi
+                for k in range(256):
+                    if hist[k] > clip_limit:
+                        excess += hist[k] - clip_limit
+                        hist[k] = clip_limit
+
+                # ridistribuzione uniforme dell'eccesso
                 bin_incr = excess // 256
-                for i in range(256):
-                    hist[i] += bin_incr
-                remaining = excess % 256
-                for i in range(remaining):
-                    hist[i] += 1
-            
-            # calcolo della CDF
+                hist += bin_incr
+                remainder = excess % 256
+                for k in range(remainder):
+                    hist[k] += 1
+
+            # calcola la Cumulative Distribution Function (CDF)
             cdf = np.zeros(256, dtype=np.uint32)
             cdf[0] = hist[0]
             for i in range(1, 256):
                 cdf[i] = cdf[i - 1] + hist[i]
             
-            # normalizzazione della CDF
+            # normalizza la CDF per mappare i valori in [0,255]
             cdf_min = cdf.min()
             cdf_max = cdf.max()
             if cdf_max != cdf_min:
                 cdf_normalized = ((cdf - cdf_min) * 255) / (cdf_max - cdf_min)
             else:
                 cdf_normalized = np.zeros(256, dtype=np.uint8)
-            
-            # applica la trasformazione al tile
-            for y in range(tile_height):
-                for x in range(tile_width):
-                    pixel_value = tile[y, x]
-                    equalized_pixel = cdf_normalized[pixel_value]
-                    output_image[y_start + y, x_start + x] = equalized_pixel
+
+            # mappa il pixel corrente usando il valore corrispondente nella Look-Up Table
+            pixel_val = image[i, j]
+            new_val = np.clip(round(cdf_normalized[pixel_val]), 0, 255)
+            output_image[i, j] = new_val
 
     return output_image
 
-# ------------------------------------ #
+# ------------------------------------------ #
 
 def eye_aspect_ratio(eye):
 
@@ -164,8 +169,8 @@ def facial_recognition(orientation, blink, lock):
         frame = imutils.resize(frame, width=600)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # enhanced_gray = histogram_equalization_sequential(gray)
-        enhanced_gray = log_performance(clahe_sequenziale, "report-sequenziale.txt", gray)
+        enhanced_gray = log_performance(clahe, "report-sequenziale.txt", gray)
+        # enhanced_gray = clahe(gray)
 
         rects = detector(enhanced_gray, 0)
 
