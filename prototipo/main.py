@@ -11,51 +11,6 @@ from face_detector import facial_recognition
 
 # ---------------------------- #
 
-def generate_performance_report(data):
-
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f"performance_report_{timestamp}.txt"
-
-    with open(filename, "w") as file:
-        file.write("Performance Report\n")
-        file.write("="*30 + "\n")
-        file.write(f"Tempo totale di esecuzione: {data['total_time']:.2f} secondi\n")
-        file.write(f"Media degli FPS: {data['average_fps']:.2f}\n")
-        file.write(f"Media consumo GPU: {data['cpu_usage']:.2f}%\n")
-        file.write(f"Media memoria utilizzata: {data['memory_usage']:.2f} MB\n")
-        # file.write(f"Tempo processo di gioco: {data['game_time']:.2f} secondi\n")
-        # file.write(f"Tempo processo di rilevamento facciale: {data['recognition_time']:.2f} secondi\n")
-
-def monitor_performance(start_time, game_process, recognition_process, stop_flag, shared_data):
-    
-    fps_list = []
-    cpu_usage = []
-    memory_usage = []
-
-    while not stop_flag.value:
-        # calcolo FPS approssimato
-        elapsed_time = time.time() - start_time.value
-        if elapsed_time > 0:
-            fps_list.append(1 / elapsed_time)
-
-        cpu_usage.append(psutil.cpu_percent())
-        memory_usage.append(psutil.virtual_memory().used / (1024 ** 2))  # Converti in MB
-
-        time.sleep(1)  # monitora ogni secondo
-
-    shared_data["total_time"] = time.time() - start_time.value
-    shared_data["average_fps"] = sum(fps_list) / len(fps_list) if fps_list else 0
-    shared_data["cpu_usage"] = sum(cpu_usage) / len(cpu_usage) if cpu_usage else 0
-    shared_data["memory_usage"] = sum(memory_usage) / len(memory_usage) if memory_usage else 0
-    # shared_data["game_time"] = game_process.exitcode if game_process.exitcode is not None else 0
-    # shared_data["recognition_time"] = recognition_process.exitcode if recognition_process.exitcode is not None else 0
-
-
-# ---------------------------- #
-
-
-
-
 def load_frames(folder_path, screen_height):
     frames = []
     for file_name in sorted(os.listdir(folder_path)):

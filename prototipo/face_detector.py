@@ -26,41 +26,10 @@ def log_performance(func, report, *args, **kwargs):
 
 # ------------------------------------------ #
 
-def apply_clahe_opencv(image, clip_limit=2.0, tile_grid_size=(32, 32)):
-
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-    
-    output_image = clahe.apply(image)
-    return output_image
-
-# ------------------------------------------ #
-
 def CLAHE(image, clip_limit=20, window_size=(32, 32)):
     """
     Applica il CLAHE (Contrast Limited Adaptive Histogram Equalization) calcolando,
     per ogni pixel, l'istogramma locale basato su un intorno di dimensione window_size (default 32x32).
-
-    L'algoritmo procede come segue per ciascun pixel:
-      1. Viene definito un intorno di dimensione window_size centrato sul pixel. Per gestire i bordi,
-         l'immagine viene opportunamente "padded" replicando i bordi.
-      2. Si calcola l'istogramma dell'intorno.
-      3. Si applica il clipping: per ogni bin, se il conteggio supera clip_limit, l'eccesso viene conteggiato
-         e il bin viene limitato a clip_limit.
-      4. L'eccesso totale viene ridistribuito uniformemente (con eventuale gestione del resto) su tutti i bin.
-      5. Si calcola la Cumulative Distribution Function (CDF) a partire dall'istogramma modificato.
-      6. La CDF viene normalizzata per mappare i valori nel range [0, 255].
-      7. Il pixel originale viene trasformato in base al valore della LUT derivante dalla CDF locale.
-
-    Parametri:
-      - image: numpy.ndarray in scala di grigi (dtype=np.uint8) contenente l'immagine di input.
-      - clip_limit: valore intero che definisce il limite massimo per ciascun bin dell'istogramma.
-      - window_size: tupla (h, w) che definisce la dimensione dell'intorno locale (default (32, 32)).
-
-    Ritorna:
-      - output_image: numpy.ndarray contenente l'immagine equalizzata.
-    
-    NOTA: Questo approccio è computazionalmente oneroso perché per ogni pixel viene
-          ricalcolato l'istogramma della sua finestra locale.
     """
 
     win_h, win_w = window_size
@@ -161,8 +130,10 @@ def facial_recognition(orientation, blink, lock):
         frame = imutils.resize(frame, width=600)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        enhanced_gray = log_performance(clahe, "report-sequenziale.txt", gray)
-        # enhanced_gray = clahe(gray)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(32,32))
+        enhanced_gray = clahe.apply(gray)
+
+        # enhanced_gray = log_performance(CLAHE, "report-sequenziale.txt", gray)
 
         rects = detector(enhanced_gray, 0)
 
@@ -222,12 +193,12 @@ def facial_recognition(orientation, blink, lock):
             blink.value = blink_event
         
 
-        cv2.putText(enhanced_gray, f"Blinks: {TOTAL}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(enhanced_gray, "EAR: {:.2f}".format(ear), (300, 30),cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        cv2.putText(enhanced_gray, f"Orientamento: {orientation_value}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+        cv2.putText(frame, f"Blinks: {TOTAL}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(frame, "EAR: {:.2f}".format(ear), (300, 30),cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.putText(frame, f"Orientamento: {orientation_value}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
 
-        # cv2.imshow("Frame", frame)
+        cv2.imshow("Frame", frame)
         cv2.imshow("Histogram Equalization", enhanced_gray)
         key = cv2.waitKey(1) & 0xFF
 
